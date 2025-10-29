@@ -1,35 +1,39 @@
-
 from cometa_utils import main
 import logging
-import sys
-import io
 from colorlog import ColoredFormatter
 
-# Настройка цветного формата
+# Настройка логирования
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Форматтер
 formatter = ColoredFormatter(
-    "%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s",
+    "%(log_color)s%(levelname)-8s%(reset)s %(message)s",
     datefmt=None,
     reset=True,
     log_colors={
-        'DEBUG':    'cyan',
-        'INFO':     'green',
-        'WARNING':  'yellow',
-        'ERROR':    'red',
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
         'CRITICAL': 'red,bg_white',
     }
 )
 
-# Принудительно устанавливаем UTF-8 для вывода
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+# Обработчики
+file_handler = logging.FileHandler('cometa_change_settings_dashboard.log', encoding='utf-8')
+console_handler = logging.StreamHandler()
 
-for handler in logging.root.handlers[:]:
-    logging.root.removeHandler(handler)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+console_handler.setFormatter(formatter)
 
-print("Скрипт запущен в режиме планировщика (каждый час)")
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 if __name__ == "__main__":
+    logger.info("Начало выполнения скрипта")
+    print('Запуск скрипта 🌌')
     main()
-    
-      
-print("Скрипт завершен")               
+    logger.info("Скрипт выполнен успешно")
+
+print("Скрипт завершен")

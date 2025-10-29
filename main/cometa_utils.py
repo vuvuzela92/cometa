@@ -6,7 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import os
 import requests
-import json
+from colorlog import ColoredFormatter
 
 def safe_open_spreadsheet(title, retries=5, delay=5):
     """
@@ -17,7 +17,7 @@ def safe_open_spreadsheet(title, retries=5, delay=5):
         print(f"[Попытка {attempt} октрыть доступ к таблице")
         try:
             return gc.open(title)
-        except APIError as e:
+        except gspread.exceptions as e:
             if "503" in str(e):
                 print(f"[Попытка {attempt}/{retries}] APIError 503 — повтор через {delay} сек.")
                 time.sleep(delay)
@@ -27,26 +27,44 @@ def safe_open_spreadsheet(title, retries=5, delay=5):
 
 
 # Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('cometa_change_settings_dashboard.log'),
-        logging.StreamHandler()
-    ]
+# Настройка логирования
+logger = logging.getLogger("cometa_logger")
+logger.setLevel(logging.INFO)
+
+# Форматтеры
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+color_formatter = ColoredFormatter(
+    "%(log_color)s%(levelname)-8s%(reset)s %(message)s",
+    datefmt=None,
+    reset=True,
+    log_colors={
+        'DEBUG': 'cyan',
+        'INFO': 'green',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'red,bg_white',
+    }
 )
-logger = logging.getLogger(__name__)
+
+# Хендлеры
+file_handler = logging.FileHandler('cometa_change_settings_dashboard.log', encoding='utf-8')
+file_handler.setFormatter(file_formatter)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(color_formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
 
 def main():
-    logger.info("Начало выполнения скрипта")
-    print('Запуск скрипта 🌌')
+    logger.info("Скрипт запущен в режиме планировщика (каждый час)")
 
     # Открываем таблицу
     table = safe_open_spreadsheet("Панель управления продажами Вектор")
     sheet = table.worksheet("Настройки автопилота").get_all_values()
     df_settings = pd.DataFrame(sheet[1:], columns=sheet[0])
     logger.info(f"Получено {len(df_settings)} записей из гугл-таблицы")
-    print(f'Таблица открыта')
 
     # Переименовываем колонки
     df_settings = df_settings.rename(columns={
@@ -64,7 +82,7 @@ def main():
         'Максимальный расход': 'max_daily_cost'
     })
 
-    # Преобразуем в нужные типы
+    # Функции для преобразования
     def to_int_or_none(x):
         x = str(x).strip()
         return int(x) if x and x != 'nan' else None
@@ -77,11 +95,9 @@ def main():
         return True if str(x).strip() == '1' else (False if str(x).strip() == '0' else None)
 
     def to_iso_date(date_str):
-        # Преобразует '24.06.2025' или '2025-06-24' в '2025-06-24'
         if not date_str or pd.isna(date_str):
             return None
         try:
-            # Если уже правильный формат
             return datetime.strptime(date_str, "%Y-%m-%d").strftime("%Y-%m-%d")
         except ValueError:
             try:
@@ -89,7 +105,7 @@ def main():
             except ValueError:
                 return None
 
-    # Собираем список параметров
+    # Сбор параметров
     params = []
     for _, row in df_settings.iterrows():
         obj = {
@@ -108,62 +124,49 @@ def main():
                 [{"quantity": to_int_or_none(row['quantity']), "size": str(row['size'])}]
                 if pd.notna(row['quantity']) and pd.notna(row['size']) else []
             ),
-            "deposit_type": (
-                [row['deposit_type']] if pd.notna(row['deposit_type']) else []
-            ),
+            "deposit_type": ([row['deposit_type']] if pd.notna(row['deposit_type']) else []),
             "min_daily_cost": to_int_or_none(row['min_daily_cost']),
             "max_daily_cost": to_int_or_none(row['max_daily_cost'])
         }
         params.append(obj)
+
     logger.info("Сформирован словарь параметров")
 
+    # Фильтруем пустые записи
     final_params = []
     for param in params:
-        target_cost = None
-        if param['target_cost_override'] and len(param['target_cost_override']) > 0:
-            target_cost = param['target_cost_override'][0].get('cost')
+        target_cost = param['target_cost_override'][0]['cost'] if param['target_cost_override'] else None
+        target_drr = param['target_drr'][0]['drr'] if param['target_drr'] else None
 
-        target_drr = None
-        if param['target_drr'] and len(param['target_drr']) > 0:
-            target_drr = param['target_drr'][0].get('drr')
-
-        # Условие для удаления пустых
-        if (
-            param['max_daily_cost'] is None
-            and param['min_daily_cost'] is None
-            and target_cost is None
-            and target_drr is None
-            and param['active'] is not False
-        ):
-            print(f"Удалён product_id: {param['product_id']}")
+        if (param['max_daily_cost'] is None
+                and param['min_daily_cost'] is None
+                and target_cost is None
+                and target_drr is None
+                and param['active'] is not False):
+            logger.info(f"Удалён product_id: {param['product_id']}")
         else:
             final_params.append(param)
 
+    # Чистим данные
     for p in final_params:
-        # Чистим target_drr
         if not p['target_drr'] or all((not i['date'] or i['drr'] is None) for i in p['target_drr']):
             p['target_drr'] = None
-
-        # Чистим target_cost_override
         if not p['target_cost_override'] or all((not i['date'] or i['cost'] is None) for i in p['target_cost_override']):
             p['target_cost_override'] = None
-
-        # Чистим min_rem
         if not p['min_rem'] or not isinstance(p['min_rem'], list) or p['min_rem'][0].get('quantity') is None:
             p['min_rem'] = None
-
-        # Чистим deposit_type
         if not p['deposit_type'] or all(d not in ['account', 'net', 'bonus'] for d in p['deposit_type']):
             p['deposit_type'] = None
-    logger.info(f"Сформированы параметры для передачи настроек в Комету {final_params}")
 
+    logger.info(f"Сформированы параметры для передачи настроек в Комету")
+
+    # Загружаем ключ
     load_dotenv()
     cometa_api_key = os.getenv('COMETA_API_KEY') 
-    # Отправка запроса
     url_change_settings = 'https://api.e-comet.io/v1/autopilots'
     headers = {'Authorization': cometa_api_key}
 
-    print('Отправляем данные в Комету')
+    # Отправка запроса
     max_attempts = 10
     attempts = 0
     success = False
@@ -172,49 +175,29 @@ def main():
             logger.info("Отправляем POST запрос в Комету")
             response = requests.post(url_change_settings, headers=headers, json=final_params)
             if response.status_code == 200:
-                print(f"Настройки автопилота успешно применены:", response.json())
-                logger.info(f"Настройки автопилота успешно применены:{response.json()} {(datetime.now()).strftime('%Y-%m-%d-%H-%M')}")
+                logger.info(f"Настройки автопилота успешно применены: {response.json()} {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
                 success = True
             elif response.status_code == 422:
-                print("Ошибка: Неверный формат данных. Проверьте логи для деталей.")
-                logger.warning(f"Ошибка 422. Неверный формат данных. Проверьте логи для деталей. {response.text}")
+                logger.warning(f"Ошибка 422. Неверный формат данных. {response.text}")
                 attempts += 1
             elif response.status_code == 401:
-                print("Ошибка: Неверный API ключ.")
-                logger.warning(f"Ошибка 401. Неверный API ключ.{response.text}")
+                logger.warning(f"Ошибка 401. Неверный API ключ. {response.text}")
             elif response.status_code == 403:
-                print("Ошибка: Недостаточно прав для выполнения операции.")
-                logger.warning(f"Ошибка 403. Недостаточно прав для выполнения операции.{response.text}")
+                logger.warning(f"Ошибка 403. Недостаточно прав. {response.text}")
             elif response.status_code >= 500:
-                print("Ошибка: Проблема на стороне сервера. Попробуйте позже.")
-                logger.warning(f"Ошибка 500. Проблема на стороне сервера. Попробуйте позже.{response.text}")
+                logger.warning(f"Ошибка 500. Проблема на сервере. {response.text}")
                 attempts += 1
             elif response.status_code == 400:
-                print("Ошибка обработки запроса.")
-                error_data = response.json()
-                if error_data:
-                    # Получаем артикул из строки ошибки
-                    not_found_article = int(error_data['detail'].split(': ')[1])
-                    # Удаляем запись с этим артикулом из final_params
-                    final_params = [item for item in final_params if item.get('product_id') != not_found_article]
                 logger.warning(f"Ошибка 400. {response.text}")
+                try:
+                    error_data = response.json()
+                    not_found_article = int(error_data['detail'].split(': ')[1])
+                    final_params = [item for item in final_params if item.get('product_id') != not_found_article]
+                except Exception:
+                    pass
             else:
-                print(f"Ошибка: Получен неожиданный статус ответа {response.status_code}. Проверьте логи для деталей.")
-                logger.warning(f"Ошибка: Получен неожиданный статус ответа {response.status_code}. Ответ сервера: {response.text}")
-                
-        except requests.exceptions.ConnectionError:
-            print("Ошибка: Не удалось подключиться к серверу. Проверьте соединение с интернетом.")
-            logger.warning(f"Ошибка: Не удалось подключиться к серверу. Проверьте соединение с интернетом. Ответ сервера: {response.text}")
-        except requests.exceptions.Timeout:
-            print("Ошибка: Сервер не отвечает. Попробуйте позже.")
-            logger.warning(f"Ошибка: Сервер не отвечает. Попробуйте позже. Ответ сервера: {response.text}")
+                logger.warning(f"Неожиданный статус ответа {response.status_code}. Ответ сервера: {response.text}")
         except requests.exceptions.RequestException as e:
-            print("Ошибка: Не удалось выполнить запрос. Проверьте логи для деталей.")
-            logger.warning(f"Ошибка: Не удалось выполнить запрос. Проверьте логи для деталей. Ответ сервера: {response.text}")
-        except json.JSONDecodeError:
-            print("Ошибка: Сервер вернул некорректный ответ. Проверьте логи для деталей.")
-            logger.warning(f"Ошибка: Сервер вернул некорректный ответ. Проверьте логи для деталей. Ответ сервера: {response.text}")
-        except Exception as e:
-            print("Ошибка: Произошла непредвиденная ошибка. Проверьте логи для деталей. Ответ сервера: {response.text}")
-            logger.warning(f"Ошибка: Получен неожиданный статус ответа {response.status_code}. Ответ сервера: {response.text}")
-    print(f"Отработка завершена {(datetime.now()).strftime('%Y-%m-%d-%H-%M')}")
+            logger.warning(f"Ошибка запроса к серверу: {e}")
+
+    logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
