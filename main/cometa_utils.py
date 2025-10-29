@@ -58,7 +58,6 @@ logger.addHandler(console_handler)
 
 
 def main():
-    logger.info("Скрипт запущен в режиме планировщика (каждый час)")
 
     # Открываем таблицу
     table = safe_open_spreadsheet("Панель управления продажами Вектор")
