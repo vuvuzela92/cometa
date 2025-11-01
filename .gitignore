@@ -21,3 +21,4 @@ reshipment.log
 "supplies_and_orders.ipynb" 
 "*.ipynb" 
 creds.json
+.log

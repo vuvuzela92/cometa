@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
+import json
 import os
 import requests
 from colorlog import ColoredFormatter
@@ -174,7 +175,7 @@ def main():
             logger.info("Отправляем POST запрос в Комету")
             response = requests.post(url_change_settings, headers=headers, json=final_params)
             if response.status_code == 200:
-                logger.info(f"Настройки автопилота успешно применены: {response.json()} {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
+                logger.info(f"Настройки автопилота успешно применены:\n{json.dumps(response.json(), indent=2, ensure_ascii=False)}\nВремя: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
                 success = True
             elif response.status_code == 422:
                 logger.warning(f"Ошибка 422. Неверный формат данных. {response.text}")
