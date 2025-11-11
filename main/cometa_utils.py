@@ -198,11 +198,11 @@ def main():
     url_change_settings = 'https://api.e-comet.io/v1/autopilots'
     headers = {'Authorization': cometa_api_key}
 
-    # Отправка запроса
-    max_attempts = 10
-    attempts = 0
-    success = False
     for batch in batches:
+        # Отправка запроса
+        max_attempts = 10
+        attempts = 0
+        success = False
         while attempts != max_attempts and not success:
             try:
                 logger.info("Отправляем POST запрос в Комету")
