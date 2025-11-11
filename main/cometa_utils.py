@@ -210,6 +210,9 @@ def main():
                 if response.status_code == 200:
                     logger.info(f"Настройки автопилота успешно применены:\n{json.dumps(response.json(), indent=2, ensure_ascii=False)}\nВремя: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
                     success = True
+                elif response.status_code == 429:
+                    logger.info(f"Ошибка 429. Слишком много запросов. {response.text}")
+                    time.sleep(attempts+1)
                 elif response.status_code == 422:
                     logger.info(f"Ошибка 422. Неверный формат данных. {response.text}")
                     attempts += 1
