@@ -1,5 +1,5 @@
 import gspread
-from time import time, sleep
+import time
 import logging
 import pandas as pd
 from datetime import datetime
@@ -16,32 +16,37 @@ def safe_open_spreadsheet(title, retries=5, delay=5):
     Пытается открыть таблицу с повторными попытками при APIError 503.
     """
     gc = gspread.service_account(filename=os.path.join(os.path.dirname(__file__), 'creds.json'))
-
+    
     for attempt in range(1, retries + 1):
         print(f"[Попытка {attempt}] открыть доступ к таблице '{title}'")
+        
         try:
             spreadsheet = gc.open(title)
             print(f"✅ Таблица '{title}' успешно открыта")
             return spreadsheet
-
+            
         except gspread.exceptions.APIError as e:
             error_code = e.response.status_code if hasattr(e, 'response') else None
+
             print(f"⚠️ [Попытка {attempt}/{retries}] APIError {error_code}: {e}")
+            
             if error_code == 503:
                 if attempt < retries:
                     print(f"⏳ Ожидание {delay} секунд перед повторной попыткой...")
                     time.sleep(delay)
-                    delay *= 2  # exponential backoff
+                    # Увеличиваем задержку для следующей попытки (exponential backoff)
+                    delay *= 2
                 else:
                     print("❌ Все попытки исчерпаны")
                     raise
             else:
+                # Другие ошибки API (403, 404 и т.д.) - не повторяем
                 raise
-
+                
         except gspread.SpreadsheetNotFound:
             print(f"❌ Таблица '{title}' не найдена")
             raise
-
+            
         except Exception as e:
             print(f"⚠️ [Попытка {attempt}/{retries}] Неожиданная ошибка: {e}")
             if attempt < retries:
@@ -84,7 +89,6 @@ logger.addHandler(console_handler)
 
 
 def main():
-
     # Открываем таблицу
     table = safe_open_spreadsheet("Панель управления продажами Вектор")
     sheet = table.worksheet("Настройки автопилота").get_all_values()
@@ -185,47 +189,65 @@ def main():
 
     logger.info(f"Сформированы параметры для передачи настроек в Комету")
 
+    # Нарезаем параметры на батчи
+    batches = list(batchify(final_params, 1000))
+
     # Загружаем ключ
     load_dotenv()
     cometa_api_key = os.getenv('COMETA_API_KEY') 
     url_change_settings = 'https://api.e-comet.io/v1/autopilots'
     headers = {'Authorization': cometa_api_key}
 
-    # Отправка запроса
-    max_attempts = 10
-    attempts = 0
-    success = False
-    while attempts != max_attempts and not success:
-        try:
-            logger.info("Отправляем POST запрос в Комету")
-            response = requests.post(url_change_settings, headers=headers, json=final_params)
-            if response.status_code == 200:
-                logger.info(f"Настройки автопилота успешно применены:\n{json.dumps(response.json(), indent=2, ensure_ascii=False)}\nВремя: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-                success = True
-            elif response.status_code == 422:
-                logger.warning(f"Ошибка 422. Неверный формат данных. {response.text}")
-                attempts += 1
-            elif response.status_code == 401:
-                logger.warning(f"Ошибка 401. Неверный API ключ. {response.text}")
-            elif response.status_code == 403:
-                logger.warning(f"Ошибка 403. Недостаточно прав. {response.text}")
-            elif response.status_code == 429:
-                logger.warning(f"Ошибка 429. Слишком много запросов. {response.text}")
-                time.sleep(1)
-            elif response.status_code >= 500:
-                logger.warning(f"Ошибка 500. Проблема на сервере. {response.text}")
-                attempts += 1
-            elif response.status_code == 400:
-                logger.warning(f"Ошибка 400. {response.text}")
-                try:
-                    error_data = response.json()
-                    not_found_article = int(error_data['detail'].split(': ')[1])
-                    final_params = [item for item in final_params if item.get('product_id') != not_found_article]
-                except Exception:
-                    pass
-            else:
-                logger.warning(f"Неожиданный статус ответа {response.status_code}. Ответ сервера: {response.text}")
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Ошибка запроса к серверу: {e}")
+    for batch in batches:
+        # Отправка запроса
+        max_attempts = 10
+        attempts = 0
+        success = False
+        while attempts != max_attempts and not success:
+            try:
+                logger.info("Отправляем POST запрос в Комету")
+                response = requests.post(url_change_settings, headers=headers, json=batch)
+                if response.status_code == 200:
+                    logger.info(f"Настройки автопилота успешно применены:\n{json.dumps(response.json(), indent=2, ensure_ascii=False)}\nВремя: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+                    success = True
+                elif response.status_code == 429:
+                    logger.info(f"Ошибка 429. Слишком много запросов. {response.text}")
+                    time.sleep(attempts+1)
+                elif response.status_code == 422:
+                    logger.info(f"Ошибка 422. Неверный формат данных. {response.text}")
+                    attempts += 1
+                elif response.status_code == 401:
+                    logger.info(f"Ошибка 401. Неверный API ключ. {response.text}")
+                elif response.status_code == 403:
+                    logger.info(f"Ошибка 403. Недостаточно прав. {response.text}")
+                elif response.status_code >= 500:
+                    logger.info(f"Ошибка 500. Проблема на сервере. {response.text}")
+                    attempts += 1
+                elif response.status_code == 400:
+                    logger.info(f"Ошибка 400. {response.text}")
+                    try:
+                        error_data = response.json()
+                        not_found_article = int(error_data['detail'].split(': ')[1])
+                        batch = [item for item in batch if item.get('product_id') != not_found_article]
+                    except Exception:
+                        pass
+                else:
+                    logger.info(f"Неожиданный статус ответа {response.status_code}. Ответ сервера: {response.text}")
+            except requests.exceptions.RequestException as e:
+                logger.info(f"Ошибка запроса к серверу: {e}")
 
-    logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
+        logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
+
+def batchify(data, batch_size):
+    """
+    Splits data into batches of a specified size.
+
+    Parameters:
+    - data: The list of items to be batched.
+    - batch_size: The size of each batch.
+
+    Returns:
+    - A generator yielding batches of data.
+    """
+    for i in range(0, len(data), batch_size):
+        yield data[i:i + batch_size]
