@@ -1,5 +1,5 @@
 import gspread
-from time import time
+from time import time, sleep
 import logging
 import pandas as pd
 from datetime import datetime
@@ -209,6 +209,9 @@ def main():
                 logger.warning(f"Ошибка 401. Неверный API ключ. {response.text}")
             elif response.status_code == 403:
                 logger.warning(f"Ошибка 403. Недостаточно прав. {response.text}")
+            elif response.status_code == 429:
+                logger.warning(f"Ошибка 429. Слишком много запросов. {response.text}")
+                time.sleep(1)
             elif response.status_code >= 500:
                 logger.warning(f"Ошибка 500. Проблема на сервере. {response.text}")
                 attempts += 1
