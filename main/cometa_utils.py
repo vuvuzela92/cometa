@@ -2,7 +2,7 @@ import gspread
 import time
 import logging
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import json
 import os
@@ -55,6 +55,20 @@ def safe_open_spreadsheet(title, retries=5, delay=5):
                 delay *= 2
             else:
                 raise RuntimeError(f"Не удалось открыть таблицу '{title}' после {retries} попыток.")
+            
+def batchify(data, batch_size):
+    """
+    Splits data into batches of a specified size.
+
+    Parameters:
+    - data: The list of items to be batched.
+    - batch_size: The size of each batch.
+
+    Returns:
+    - A generator yielding batches of data.
+    """
+    for i in range(0, len(data), batch_size):
+        yield data[i:i + batch_size]
 
 
 # Настройка логирования
@@ -107,6 +121,7 @@ def main():
         'Размер': 'size',
         'Количество': 'quantity',
         'Счет автопополнения': 'deposit_type',
+        'Дата минимального расхода': 'min_daily_cost_date',
         'Минимальный расход': 'min_daily_cost',
         'Максимальный расход': 'max_daily_cost'
     })
@@ -154,7 +169,13 @@ def main():
                 if pd.notna(row['quantity']) and pd.notna(row['size']) else []
             ),
             "deposit_type": ([row['deposit_type']] if pd.notna(row['deposit_type']) else []),
-            "min_daily_cost": to_int_or_none(row['min_daily_cost']),
+
+
+
+            # "min_daily_cost": to_int_or_none(row['min_daily_cost']) - старая настройка мин расхода,
+            "min_daily_cost": (
+                [{"date": datetime.now().strftime("%Y-%m-%d"), "cost": to_float_or_none(row['min_daily_cost'])}]
+            ),            
             "max_daily_cost": to_int_or_none(row['max_daily_cost'])
         }
         params.append(obj)
@@ -164,9 +185,11 @@ def main():
     # Фильтруем пустые записи
     final_params = []
     for param in params:
+        # Проверяем целевой расход 
         target_cost = param['target_cost_override'][0]['cost'] if param['target_cost_override'] else None
+        # Проверяем целевой ДРР
         target_drr = param['target_drr'][0]['drr'] if param['target_drr'] else None
-
+        # Если все ключевые параметры пусты и автопилот не деактивирован, пропускаем запись
         if (param['max_daily_cost'] is None
                 and param['min_daily_cost'] is None
                 and target_cost is None
@@ -175,6 +198,7 @@ def main():
             logger.info(f"Удалён product_id: {param['product_id']}")
         else:
             final_params.append(param)
+        
 
     # Чистим данные
     for p in final_params:
@@ -186,6 +210,11 @@ def main():
             p['min_rem'] = None
         if not p['deposit_type'] or all(d not in ['account', 'net', 'bonus'] for d in p['deposit_type']):
             p['deposit_type'] = None
+
+        #  Проверка min_daily_cost на наличие значений
+        if not p['min_daily_cost'] or all((not i['date'] or i['cost'] is None) for i in p['min_daily_cost']):
+            p['min_daily_cost'] = None        
+        
 
     logger.info(f"Сформированы параметры для передачи настроек в Комету")
 
@@ -237,17 +266,3 @@ def main():
                 logger.info(f"Ошибка запроса к серверу: {e}")
 
         logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
-
-def batchify(data, batch_size):
-    """
-    Splits data into batches of a specified size.
-
-    Parameters:
-    - data: The list of items to be batched.
-    - batch_size: The size of each batch.
-
-    Returns:
-    - A generator yielding batches of data.
-    """
-    for i in range(0, len(data), batch_size):
-        yield data[i:i + batch_size]
