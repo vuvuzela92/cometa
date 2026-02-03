@@ -23,6 +23,11 @@ headers = {'Authorization': cometa_api_key}
 response_autopilots = requests.get(url_autopilots, headers=headers)
 df_autopilots = pd.DataFrame(response_autopilots.json())
 
+# Извлекаем из списка словарей значение по ключу 'min_daily_cost' в столбце 'min_daily_cost'
+df_autopilots['min_daily_cost_price'] = df_autopilots['min_daily_cost'].apply(lambda x: x[0]['cost'])
+# Извлекаем из списка словарей значение по ключу 'min_daily_cost' в столбце 'min_daily_cost'
+df_autopilots['min_daily_cost_date_from'] = df_autopilots['min_daily_cost'].apply(lambda x: x[0]['date'])
+
 # Создаем новую колонку 'cost' из значений в 'target_cost'
 df_autopilots['target_cost'] = df_autopilots['target_cost_override'].apply(
     lambda x:float(x[0]['cost']) if isinstance(x, list) and len(x) > 0 and isinstance(x[0], dict) and 'cost' in x[0] else np.nan
