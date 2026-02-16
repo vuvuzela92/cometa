@@ -133,7 +133,7 @@ def main():
 
     def to_float_or_none(x):
         x = str(x).replace(',', '.').strip()
-        return float(x) if x and x != 'nan' else None
+        return float(x) if x and x != 'nan' and x != '' else None
 
     def to_bool_or_none(x):
         return True if str(x).strip() == '1' else (False if str(x).strip() == '0' else None)
@@ -226,7 +226,8 @@ def main():
     cometa_api_key = os.getenv('COMETA_API_KEY') 
     url_change_settings = 'https://api.e-comet.io/v1/autopilots'
     headers = {'Authorization': cometa_api_key}
-
+    count_sent_params = 0
+    count_unsent_params = 0
     for batch in batches:
         # Отправка запроса
         max_attempts = 10
@@ -237,6 +238,7 @@ def main():
                 logger.info("Отправляем POST запрос в Комету")
                 response = requests.post(url_change_settings, headers=headers, json=batch)
                 if response.status_code == 200:
+                    count_sent_params += 1
                     logger.info(f"Настройки автопилота успешно применены:\n{json.dumps(response.json(), indent=2, ensure_ascii=False)}\nВремя: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
                     success = True
                 elif response.status_code == 429:
@@ -245,6 +247,7 @@ def main():
                 elif response.status_code == 422:
                     logger.info(f"Ошибка 422. Неверный формат данных. {response.text}")
                     attempts += 1
+                    count_unsent_params +=1
                 elif response.status_code == 401:
                     logger.info(f"Ошибка 401. Неверный API ключ. {response.text}")
                 elif response.status_code == 403:
@@ -252,8 +255,10 @@ def main():
                 elif response.status_code >= 500:
                     logger.info(f"Ошибка 500. Проблема на сервере. {response.text}")
                     attempts += 1
+                    count_unsent_params +=1
                 elif response.status_code == 400:
                     logger.info(f"Ошибка 400. {response.text}")
+                    count_unsent_params +=1
                     try:
                         error_data = response.json()
                         not_found_article = int(error_data['detail'].split(': ')[1])
@@ -265,4 +270,4 @@ def main():
             except requests.exceptions.RequestException as e:
                 logger.info(f"Ошибка запроса к серверу: {e}")
 
-        logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')}")
+        logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')} - Успешно отправлено: {count_sent_params}, Неотправлено: {count_unsent_params}")
