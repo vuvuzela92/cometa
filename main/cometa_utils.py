@@ -270,4 +270,4 @@ def main():
             except requests.exceptions.RequestException as e:
                 logger.info(f"Ошибка запроса к серверу: {e}")
 
-        logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d-%H-%M')} - Успешно отправлено: {count_sent_params}, Неотправлено: {count_unsent_params}")
+        logger.info(f"Отработка завершена {datetime.now().strftime('%Y-%m-%d %H-%M')} - Успешно отправлено: {count_sent_params}, Неотправлено: {count_unsent_params}")
