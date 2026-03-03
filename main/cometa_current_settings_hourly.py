@@ -29,9 +29,9 @@ df_autopilots['min_daily_cost_price'] = df_autopilots['min_daily_cost'].apply(la
 df_autopilots['min_daily_cost_date_from'] = df_autopilots['min_daily_cost'].apply(lambda x: x[0]['date'])
 
 # Создаем новую колонку 'cost' из значений в 'target_cost'
-df_autopilots['target_cost'] = df_autopilots['target_cost_override'].apply(
-    lambda x:float(x[0]['cost']) if isinstance(x, list) and len(x) > 0 and isinstance(x[0], dict) and 'cost' in x[0] else np.nan
-)
+# df_autopilots['target_cost'] = df_autopilots['target_cost_override'].apply(
+#     lambda x:float(x[0]['cost']) if isinstance(x, list) and len(x) > 0 and isinstance(x[0], dict) and 'cost' in x[0] else np.nan
+# )
 df_autopilots['target_cost_date'] = df_autopilots['target_cost_override'].apply(
     lambda x: x[0]['date'] if isinstance(x, list) and len(x) > 0 and isinstance(x[0], dict) and 'date' in x[0] else np.nan
 )
@@ -94,6 +94,10 @@ df_autopilots['date'] = df_autopilots['date'].astype(str)
 df_autopilots['target_cost_date'] = df_autopilots['target_cost_date'].astype(str)
 df_autopilots['target_drr_date'] = df_autopilots['target_drr_date'].astype(str)
 df_autopilots['deposit_type'] = df_autopilots['deposit_type'].astype(str)
+
+df_autopilots = df_autopilots[['api_key_id', 'product_id', 'active', 'status', 'target_drr', 'target_cost_override', 'min_rem', 'deposit_type', 'min_daily_cost', 'max_daily_cost', 
+                               'search_min_share', 'brand_traffic', 'budget_spent_today', 'target_cost', 'cost_to_target_pct_today', 
+                               'min_daily_cost_price', 'min_daily_cost_date_from', 'target_cost_date', 'target_drr_date', 'date']]
 
 
 autopilots_sheet.update([df_autopilots.columns.values.tolist()] + df_autopilots.values.tolist())
