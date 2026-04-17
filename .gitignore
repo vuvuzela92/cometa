@@ -22,3 +22,5 @@ reshipment.log
 "*.ipynb" 
 creds.json
 .logmain/creds.json 
+main/creds.json 
+main/creds_arthur.json 
