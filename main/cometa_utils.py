@@ -134,6 +134,7 @@ def main():
     def to_float_or_none(x):
         x = str(x).replace(',', '.').strip()
         return float(x) if x and x != 'nan' and x != '' else None
+        return float(x) if x and x != 'nan' and x != '' else None
 
     def to_bool_or_none(x):
         return True if str(x).strip() == '1' else (False if str(x).strip() == '0' else None)
