@@ -1,26 +1,46 @@
-# Windows
-Thumbs.db
-Desktop.ini
-# Python
-__pycache__/
-*.pyc
+# Environment / secrets
+.env
+.env.*
 .venv/
 venv/
-warehouse_venv/
-# VS Code
-.vscode/
-tokens.json
-.env
-assembly_info_log.log
+ENV/
+env/
 
-.gitignore.bak
-assembly_info.log
-bat-v0.24.0-x86_64-pc-windows-msvc.zip
-bat-v0.24.0-x86_64-unknown-linux-g
-reshipment.log
-"supplies_and_orders.ipynb" 
-"*.ipynb" 
-creds.json
-.logmain/creds.json 
-main/creds.json 
-main/creds_arthur.json 
+# Python cache / build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.Spotlight-V100/
+.Trashes/
+
+# Local sensitive/project-specific files
+creds/creds.json
