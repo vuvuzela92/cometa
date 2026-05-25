@@ -8,26 +8,19 @@ from clients.google_sheets_client import GoogleSheetClient
 from services.batch.batch_sender import BatchSender
 from services.exclusion_logger import ExclusionLogger
 from services.logging_setup import configure_logging, get_logger
+from services.processing.payload_date_enforcer import (
+    enforce_future_budget_dates,
+    get_tomorrow_date_str,
+)
 from services.processing.row_parser import parse_autopilot_row
 
 log = get_logger("CometaApp.processing")
 
 
 class AutopilotManager:
-    """Оркестрирует полный цикл обновления рекламных настроек.
-
-    Notes:
-        Класс intentionally не знает деталей HTTP и retry-алгоритма батча.
-        Эти обязанности делегированы клиентам и BatchSender, чтобы упростить
-        поддержку и локальные изменения в будущем.
-    """
+    """Оркестрирует полный цикл обновления рекламных настроек."""
 
     def __init__(self):
-        """Собирает зависимости и проверяет обязательные настройки окружения.
-
-        Raises:
-            ValueError: Если не задан `COMETA_API_KEY`.
-        """
         configure_logging()
         load_dotenv()
         api_key = os.getenv("COMETA_API_KEY")
@@ -48,20 +41,16 @@ class AutopilotManager:
         self.exclusion_logger.initialize()
 
     def _build_payload(self) -> List[dict]:
-        """Собирает итоговый payload из Google Sheets.
-
-        Returns:
-            List[dict]: Подготовленные элементы для отправки в API.
-
-        Side Effects:
-            Пишет диагностические сообщения в логи и логирует исключенные строки.
-
-        Notes:
-            Правила валидации сохранены без изменения бизнес-логики:
-            строки без обязательных ID и строки без полей обновления исключаются.
-        """
+        """Собирает итоговый payload из Google Sheets."""
         dataframe = self.gs_client.get_data("Настройки автопилота")
         log.info(f"Прочитано строк из Google Таблицы: {len(dataframe)}")
+
+        # Единая дата для всех дневных настроек в этом запуске.
+        effective_date = get_tomorrow_date_str()
+        log.info(
+            f"ℹ️ Для полей target_drr и min_daily_cost принудительно установлена дата: "
+            f"{effective_date}"
+        )
 
         final_payload: List[dict] = []
         stats = {"errors": 0, "empty": 0}
@@ -79,8 +68,8 @@ class AutopilotManager:
                 continue
 
             payload = settings.to_api_dict()
-            # В payload всегда есть 2 обязательных поля (api_key_id, product_id).
-            # Если больше ничего нет, отправка не имеет бизнес-смысла.
+            payload = enforce_future_budget_dates(payload, target_date=effective_date)
+
             if len(payload) <= 2:
                 self.exclusion_logger.log_row_exclusion(
                     row_index=index,
@@ -115,6 +104,23 @@ class AutopilotManager:
             log.info(
                 f"ℹ️ Отправка батча #{batch_number}. Исходный размер: {len(batch)}"
             )
+
+            # Логируем фактически примененную дату на уровне батча.
+            if batch:
+                target_drr_date = None
+                min_daily_cost_date = None
+                if isinstance(batch[0].get("target_drr"), list) and batch[0]["target_drr"]:
+                    target_drr_date = batch[0]["target_drr"][0].get("date")
+                if (
+                    isinstance(batch[0].get("min_daily_cost"), list)
+                    and batch[0]["min_daily_cost"]
+                ):
+                    min_daily_cost_date = batch[0]["min_daily_cost"][0].get("date")
+                log.info(
+                    f"ℹ️ Батч #{batch_number}: даты payload "
+                    f"target_drr={target_drr_date}, min_daily_cost={min_daily_cost_date}"
+                )
+
             self.batch_sender.send_with_missing_article_filter(
                 batch=batch,
                 batch_number=batch_number,

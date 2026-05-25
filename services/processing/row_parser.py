@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 import pandas as pd
@@ -16,8 +15,9 @@ def parse_autopilot_row(row: pd.Series) -> Optional[AutopilotSettings]:
         AutopilotSettings | None: Валидная модель или `None`, если строка невалидна.
 
     Notes:
-        Функция сохраняет историческое поведение: ошибки парсинга не прерывают
-        pipeline, а переводят строку в excluded.
+        Ошибки парсинга не прерывают весь pipeline и приводят к исключению строки.
+        Даты для `target_drr` и `min_daily_cost` здесь не фиксируются намеренно:
+        они централизованно проставляются перед отправкой в API.
     """
     try:
         def to_int(value: object) -> Optional[int]:
@@ -39,7 +39,6 @@ def parse_autopilot_row(row: pd.Series) -> Optional[AutopilotSettings]:
             return None
 
         settings = AutopilotSettings(api_key_id=api_key_id, product_id=product_id)
-        today = datetime.now().strftime("%Y-%m-%d")
 
         active = str(row.get("Активность")).strip()
         if active == "1":
@@ -49,24 +48,16 @@ def parse_autopilot_row(row: pd.Series) -> Optional[AutopilotSettings]:
 
         min_cost = to_float(row.get("Минимальный расход"))
         if min_cost is not None:
-            settings.min_daily_cost = [{"date": today, "cost": int(min_cost)}]
+            settings.min_daily_cost = [{"date": None, "cost": int(min_cost)}]
 
         max_cost = to_int(row.get("Максимальный расход"))
         if max_cost is not None:
             settings.max_daily_cost = max_cost
 
         target_drr = to_float(row.get("Целевой ДРР"))
-        target_drr_date = str(
-            row.get("Дата, начиная с которой будет действовать целевой ДРР")
-        ).strip()
         if target_drr is not None:
-            # Если дата не передана, используем сегодняшнюю — это текущее правило процесса.
-            valid_date = (
-                target_drr_date if target_drr_date and target_drr_date != "nan" else today
-            )
-            settings.target_drr = [{"date": valid_date, "drr": target_drr}]
+            settings.target_drr = [{"date": None, "drr": target_drr}]
 
         return settings
     except Exception:
-        # Сохраняем прежнее поведение: любые ошибки парсинга трактуются как invalid-row.
         return None
