@@ -88,3 +88,26 @@ class CometaClient:
                 time.sleep(2)
 
         return False, None, None, "Network error after retries"
+
+    def get_autopilots(self) -> List[dict]:
+        """Получает текущие настройки автопилотов из API Cometa.
+
+        Returns:
+            List[dict]: Список автопилотов. Пустой список при отсутствии данных.
+
+        Raises:
+            requests.RequestException: Ошибки сети.
+            ValueError: Невалидный формат ответа.
+            RuntimeError: Ошибка API с кодом != 200.
+        """
+        response = requests.get(self.url, headers=self.headers, timeout=30)
+        if response.status_code != 200:
+            log.error(f"❌ Ошибка {response.status_code}: {response.text}")
+            raise RuntimeError(f"Cometa API error {response.status_code}")
+
+        payload = response.json()
+        if payload is None:
+            return []
+        if not isinstance(payload, list):
+            raise ValueError("Cometa API returned non-list payload for autopilots")
+        return payload
