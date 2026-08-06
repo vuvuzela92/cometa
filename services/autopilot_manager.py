@@ -16,6 +16,8 @@ from services.processing.row_parser import parse_autopilot_row
 
 log = get_logger("CometaApp.processing")
 
+MAX_MIN_DAILY_COST = 50_000
+
 
 class AutopilotManager:
     """Оркестрирует полный цикл обновления рекламных настроек."""
@@ -69,6 +71,27 @@ class AutopilotManager:
 
             payload = settings.to_api_dict()
             payload = enforce_future_budget_dates(payload, target_date=effective_date)
+
+            min_daily_cost = payload.get("min_daily_cost")
+            if isinstance(min_daily_cost, list):
+                invalid_costs = [
+                    item.get("cost")
+                    for item in min_daily_cost
+                    if isinstance(item, dict)
+                    and item.get("cost") is not None
+                    and item["cost"] > MAX_MIN_DAILY_COST
+                ]
+                if invalid_costs:
+                    self.exclusion_logger.log_row_exclusion(
+                        row_index=index,
+                        product_id=settings.product_id,
+                        reason=(
+                            "Минимальный расход превышает лимит Cometa "
+                            f"{MAX_MIN_DAILY_COST}: {invalid_costs[0]}"
+                        ),
+                    )
+                    stats["errors"] += 1
+                    continue
 
             if len(payload) <= 2:
                 self.exclusion_logger.log_row_exclusion(
