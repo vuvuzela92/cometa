@@ -44,3 +44,4 @@ $RECYCLE.BIN/
 
 # Local sensitive/project-specific files
 creds/creds.json
+creds/

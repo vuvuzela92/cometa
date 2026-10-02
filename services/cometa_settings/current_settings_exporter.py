@@ -73,6 +73,13 @@ class CurrentAutopilotSettingsExporter:
             return value[0].get(key)
         return None
 
+    @staticmethod
+    def _last_list_item_value(value: Any, key: str) -> Any:
+        """Извлекает `key` из последнего элемента списка дневных настроек."""
+        if isinstance(value, list) and value and isinstance(value[-1], dict):
+            return value[-1].get(key)
+        return None
+
     def _normalize_current_settings(self, raw_items: list[dict]) -> pd.DataFrame:
         """Нормализует данные текущих настроек в формат старого hourly-скрипта."""
         if not raw_items:
@@ -86,7 +93,7 @@ class CurrentAutopilotSettingsExporter:
         log.info(f"ℹ️ После фильтра status != 'stopped': {len(df)}")
 
         df["min_daily_cost_price"] = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
-            lambda x: self._first_list_item_value(x, "cost")
+            lambda x: self._last_list_item_value(x, "cost")
         )
         df["min_daily_cost_date_from"] = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
             lambda x: self._first_list_item_value(x, "date")
