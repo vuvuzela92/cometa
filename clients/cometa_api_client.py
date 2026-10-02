@@ -100,7 +100,29 @@ class CometaClient:
             ValueError: Невалидный формат ответа.
             RuntimeError: Ошибка API с кодом != 200.
         """
-        response = requests.get(self.url, headers=self.headers, timeout=30)
+        for attempt in range(5):
+            try:
+                response = requests.get(self.url, headers=self.headers, timeout=30)
+            except requests.RequestException:
+                if attempt == 4:
+                    raise
+                wait = (attempt + 1) * 2
+                log.warning(f"⚠️ Ошибка сети при чтении автопилотов, повтор через {wait} сек.")
+                time.sleep(wait)
+                continue
+
+            if response.status_code == 429:
+                if attempt == 4:
+                    break
+                wait = (attempt + 1) * 2
+                log.warning(f"⚠️ 429 Too Many Requests при чтении автопилотов. Ждем {wait} сек.")
+                time.sleep(wait)
+                continue
+            break
+
+        else:
+            raise RuntimeError("Cometa API request failed after retries")
+
         if response.status_code != 200:
             log.error(f"❌ Ошибка {response.status_code}: {response.text}")
             raise RuntimeError(f"Cometa API error {response.status_code}")

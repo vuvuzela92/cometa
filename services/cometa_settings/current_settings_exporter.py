@@ -47,8 +47,9 @@ class CurrentAutopilotSettingsExporter:
         "target_cost_date",
         "target_drr_date",
         "date",
+        "cpc_mode",
     ]
-    NUMERIC_COLUMNS = ["target_drr", "min_daily_cost", "max_daily_cost", "target_cost"]
+    NUMERIC_COLUMNS = ["target_drr", "max_daily_cost", "target_cost"]
     STR_COLUMNS = ["date", "target_cost_date", "target_drr_date", "deposit_type"]
 
     def __init__(self):
@@ -96,7 +97,7 @@ class CurrentAutopilotSettingsExporter:
             lambda x: self._last_list_item_value(x, "cost")
         )
         df["min_daily_cost_date_from"] = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
-            lambda x: self._first_list_item_value(x, "date")
+            lambda x: self._last_list_item_value(x, "date")
         )
         df["target_cost_date"] = df.get("target_cost_override", pd.Series(dtype=object)).apply(
             lambda x: self._first_list_item_value(x, "date")
@@ -105,10 +106,21 @@ class CurrentAutopilotSettingsExporter:
             lambda x: self._first_list_item_value(x, "date")
         )
         df["target_drr"] = df.get("target_drr", pd.Series(dtype=object)).apply(
-            lambda x: float(self._first_list_item_value(x, "drr"))
-            if self._first_list_item_value(x, "drr") is not None
+            lambda x: float(self._last_list_item_value(x, "drr"))
+            if self._last_list_item_value(x, "drr") is not None
             else None
         )
+
+        df["target_drr_date"] = df.get("target_drr", pd.Series(dtype=object)).apply(
+            lambda x: self._last_list_item_value(x, "date")
+        )
+
+        if "min_daily_cost" in df.columns:
+            df["min_daily_cost"] = df["min_daily_cost"].apply(
+                lambda x: json.dumps(x, ensure_ascii=False)
+                if isinstance(x, (dict, list))
+                else ""
+            )
 
         for col in ["target_cost_override", "min_rem"]:
             if col in df.columns:
@@ -119,6 +131,11 @@ class CurrentAutopilotSettingsExporter:
         # deposit_type обязательно строкой.
         if "deposit_type" in df.columns:
             df["deposit_type"] = df["deposit_type"].apply(serialize_sheet_cell).astype(str)
+
+        if "target_cost_date" in df.columns:
+            df["target_cost_date"] = df["target_cost_date"].apply(
+                lambda value: "" if value is None or value == "None" else value
+            )
 
         # Колонка date в старом формате для каждой строки.
         df["date"] = datetime.now().strftime("%Y-%m-%d")
@@ -221,6 +238,8 @@ class CurrentAutopilotSettingsExporter:
         log.info("ℹ️ Старт выгрузки текущих настроек автопилота")
         raw_items = self.cometa_client.get_autopilots()
         df_export = self._normalize_current_settings(raw_items)
+        if df_export.duplicated(subset=["api_key_id", "product_id"]).any():
+            raise ValueError("В ответе API обнаружены дубликаты api_key_id + product_id")
         log.info(f"ℹ️ Подготовлено строк к выгрузке: {len(df_export)}")
 
         rows = self._to_rows(df_export)
