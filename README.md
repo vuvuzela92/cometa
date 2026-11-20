@@ -70,9 +70,14 @@ cometa/
 ## 4. Быстрый старт
 
 ```powershell
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
+uv sync
+uv run python run.py
+```
+
+Для активации окружения вручную в PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
 python run.py
 ```
 

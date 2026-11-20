@@ -49,6 +49,9 @@ class GoogleSheetClient:
             spreadsheet = self.gc.open(self.title)
             worksheet = spreadsheet.worksheet(worksheet_name)
             worksheet.update(rows)
+            current_rows = worksheet.row_count
+            if current_rows > len(rows):
+                worksheet.batch_clear([f"A{len(rows) + 1}:V{current_rows}"])
         except Exception as error:
             log.error(f"Ошибка при записи в таблицу: {error}")
             raise
