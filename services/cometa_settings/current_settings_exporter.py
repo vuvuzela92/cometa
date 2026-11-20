@@ -139,10 +139,6 @@ class CurrentAutopilotSettingsExporter:
             else None
         )
 
-        df["target_drr_date"] = df.get("target_drr", pd.Series(dtype=object)).apply(
-            lambda x: self._last_list_item_value(x, "date")
-        )
-
         if "min_daily_cost" in df.columns:
             df["min_daily_cost"] = df["min_daily_cost"].apply(
                 lambda x: json.dumps(x, ensure_ascii=False)
