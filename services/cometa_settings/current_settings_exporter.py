@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -73,6 +73,35 @@ class CurrentAutopilotSettingsExporter:
             return value[0].get(key)
         return None
 
+    @staticmethod
+    def _latest_dated_list_item(value: Any) -> dict | None:
+        """Выбирает элемент списка с самой поздней корректной датой.
+
+        Если дат нет или они некорректны, возвращает первый словарь
+        для совместимости с прежним поведением.
+        """
+        if not isinstance(value, list):
+            return None
+
+        items = [item for item in value if isinstance(item, dict)]
+        if not items:
+            return None
+
+        dated_items: list[tuple[date, dict]] = []
+        for item in items:
+            raw_date = item.get("date")
+            if not isinstance(raw_date, str):
+                continue
+            try:
+                dated_items.append((date.fromisoformat(raw_date), item))
+            except ValueError:
+                continue
+
+        if not dated_items:
+            return items[0]
+
+        return max(dated_items, key=lambda dated_item: dated_item[0])[1]
+
     def _normalize_current_settings(self, raw_items: list[dict]) -> pd.DataFrame:
         """Нормализует данные текущих настроек в формат старого hourly-скрипта."""
         if not raw_items:
@@ -85,21 +114,27 @@ class CurrentAutopilotSettingsExporter:
             df = df[df["status"] != "stopped"]
         log.info(f"ℹ️ После фильтра status != 'stopped': {len(df)}")
 
-        df["min_daily_cost_price"] = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
-            lambda x: self._first_list_item_value(x, "cost")
+        latest_min_daily_cost = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
+            self._latest_dated_list_item
         )
-        df["min_daily_cost_date_from"] = df.get("min_daily_cost", pd.Series(dtype=object)).apply(
-            lambda x: self._first_list_item_value(x, "date")
+        df["min_daily_cost_price"] = latest_min_daily_cost.apply(
+            lambda item: item.get("cost") if item is not None else None
+        )
+        df["min_daily_cost_date_from"] = latest_min_daily_cost.apply(
+            lambda item: item.get("date") if item is not None else None
         )
         df["target_cost_date"] = df.get("target_cost_override", pd.Series(dtype=object)).apply(
             lambda x: self._first_list_item_value(x, "date")
         )
-        df["target_drr_date"] = df.get("target_drr", pd.Series(dtype=object)).apply(
-            lambda x: self._first_list_item_value(x, "date")
+        latest_target_drr = df.get("target_drr", pd.Series(dtype=object)).apply(
+            self._latest_dated_list_item
         )
-        df["target_drr"] = df.get("target_drr", pd.Series(dtype=object)).apply(
-            lambda x: float(self._first_list_item_value(x, "drr"))
-            if self._first_list_item_value(x, "drr") is not None
+        df["target_drr_date"] = latest_target_drr.apply(
+            lambda item: item.get("date") if item is not None else None
+        )
+        df["target_drr"] = latest_target_drr.apply(
+            lambda item: float(item["drr"])
+            if item is not None and item.get("drr") is not None
             else None
         )
 
